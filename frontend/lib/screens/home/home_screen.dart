@@ -75,6 +75,7 @@ class HomeScreen extends StatelessWidget {
                         icon: Icons.inventory_2_outlined,
                         title: 'Inventory',
                         color: AppConfig.primaryColor,
+                        route: '/inventory',
                       ),
                       _buildFeatureCard(
                         context,
@@ -110,6 +111,7 @@ class HomeScreen extends StatelessWidget {
     required IconData icon,
     required String title,
     required Color color,
+    String? route,
   }) {
     return Card(
       elevation: 2,
@@ -118,9 +120,13 @@ class HomeScreen extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title - Coming Soon!')),
-          );
+          if (route != null) {
+            context.push(route);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('$title - Coming Soon!')),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(12),
         child: Column(

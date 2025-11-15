@@ -68,6 +68,21 @@ func SetupRoutes(r *gin.Engine) {
 				vendors.POST("", handlers.CreateVendor)
 				vendors.DELETE("/:id", handlers.DeleteVendor)
 			}
+
+			// Sales
+			sales := protected.Group("/sales")
+			{
+				sales.POST("", handlers.ProcessSale)
+				sales.GET("", handlers.ListSales)
+				sales.GET("/:id", handlers.GetSale)
+				sales.POST("/:id/upload-proof", handlers.UploadPaymentProof)
+			}
+
+			// Receipts
+			receipts := protected.Group("/receipts")
+			{
+				receipts.GET("/:sale_id/pdf", handlers.GetReceipt)
+			}
 		}
 	}
 }

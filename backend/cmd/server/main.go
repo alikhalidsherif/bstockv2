@@ -6,9 +6,15 @@ import (
 	"bstock/routes"
 	"github.com/gin-gonic/gin"
 	"log"
+	"os"
 )
 
 func main() {
+	// Create uploads directory
+	if err := os.MkdirAll("./uploads", 0755); err != nil {
+		log.Fatal("Failed to create uploads directory:", err)
+	}
+
 	// Connect to database
 	if err := database.Connect(); err != nil {
 		log.Fatal("Failed to connect to database:", err)
@@ -24,6 +30,8 @@ func main() {
 		&models.Product{},
 		&models.Variant{},
 		&models.Vendor{},
+		&models.Sale{},
+		&models.SaleItem{},
 	); err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
