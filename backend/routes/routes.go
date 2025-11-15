@@ -83,6 +83,16 @@ func SetupRoutes(r *gin.Engine) {
 			{
 				receipts.GET("/:sale_id/pdf", handlers.GetReceipt)
 			}
+
+			// Analytics (Owner only, requires analytics enabled plan)
+			analytics := protected.Group("/analytics")
+			analytics.Use(middleware.RequireRole("owner"))
+			analytics.Use(middleware.RequireAnalytics())
+			{
+				analytics.GET("/summary", handlers.GetAnalyticsSummary)
+				analytics.GET("/products/top", handlers.GetTopProducts)
+				analytics.GET("/sales/daily", handlers.GetDailySalesChart)
+			}
 		}
 	}
 }

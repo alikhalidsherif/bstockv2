@@ -7,6 +7,9 @@ import '../screens/inventory/product_list_screen.dart';
 import '../screens/inventory/product_form_screen.dart';
 import '../screens/inventory/stock_adjustment_screen.dart';
 import '../screens/inventory/vendor_list_screen.dart';
+import '../screens/pos/pos_screen.dart';
+import '../screens/pos/checkout_screen.dart';
+import '../screens/pos/receipt_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/login',
@@ -53,6 +56,22 @@ final router = GoRouter(
     GoRoute(
       path: '/inventory/vendors',
       builder: (context, state) => const VendorListScreen(),
+    ),
+    // POS routes
+    GoRoute(
+      path: '/pos',
+      builder: (context, state) => const POSScreen(),
+    ),
+    GoRoute(
+      path: '/pos/checkout',
+      builder: (context, state) => const CheckoutScreen(),
+    ),
+    GoRoute(
+      path: '/pos/receipt/:saleId',
+      builder: (context, state) {
+        final saleId = state.pathParameters['saleId']!;
+        return ReceiptScreen(saleId: saleId);
+      },
     ),
   ],
 );

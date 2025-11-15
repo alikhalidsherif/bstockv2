@@ -82,6 +82,7 @@ class HomeScreen extends StatelessWidget {
                         icon: Icons.point_of_sale,
                         title: 'Sales',
                         color: AppConfig.successColor,
+                        route: '/pos',
                       ),
                       _buildFeatureCard(
                         context,
