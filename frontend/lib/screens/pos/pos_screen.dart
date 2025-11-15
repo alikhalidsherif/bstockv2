@@ -8,6 +8,7 @@ import '../../providers/inventory_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/barcode_service.dart';
 import '../../widgets/cart_widget.dart';
+import '../../widgets/connectivity_indicator.dart';
 
 class POSScreen extends StatefulWidget {
   const POSScreen({super.key});
@@ -133,6 +134,7 @@ class _POSScreenState extends State<POSScreen> {
         backgroundColor: AppConfig.primaryColor,
         foregroundColor: Colors.white,
         actions: [
+          const ConnectivityBadge(),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             onPressed: _scanBarcode,

@@ -10,6 +10,8 @@ import '../screens/inventory/vendor_list_screen.dart';
 import '../screens/pos/pos_screen.dart';
 import '../screens/pos/checkout_screen.dart';
 import '../screens/pos/receipt_screen.dart';
+import '../screens/analytics/dashboard_screen.dart';
+import '../screens/analytics/top_products_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/login',
@@ -72,6 +74,15 @@ final router = GoRouter(
         final saleId = state.pathParameters['saleId']!;
         return ReceiptScreen(saleId: saleId);
       },
+    ),
+    // Analytics routes
+    GoRoute(
+      path: '/analytics',
+      builder: (context, state) => const AnalyticsDashboardScreen(),
+    ),
+    GoRoute(
+      path: '/analytics/top-products',
+      builder: (context, state) => const TopProductsScreen(),
     ),
   ],
 );

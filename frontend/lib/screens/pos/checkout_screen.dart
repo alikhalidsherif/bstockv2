@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../config/app_config.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/sales_service.dart';
+import '../../services/sync_service.dart';
 import '../../models/sale.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final SalesService _salesService = SalesService();
+  final SyncService _syncService = SyncService();
   final ImagePicker _imagePicker = ImagePicker();
 
   String _selectedPaymentMethod = 'cash';
@@ -96,19 +98,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         paymentProofUrl = _paymentProofImage!.path;
       }
 
-      // Create the sale
-      final sale = await _salesService.createSale(
-        items: cart.items,
-        paymentMethod: _selectedPaymentMethod,
-        paymentProofUrl: paymentProofUrl,
-      );
+      // Check if we're online
+      if (_syncService.isOnline) {
+        // Try to create the sale directly
+        try {
+          final sale = await _salesService.createSale(
+            items: cart.items,
+            paymentMethod: _selectedPaymentMethod,
+            paymentProofUrl: paymentProofUrl,
+          );
 
-      // Clear the cart
-      cart.clearCart();
+          // Clear the cart
+          cart.clearCart();
 
-      if (mounted) {
-        // Navigate to receipt screen
-        context.go('/pos/receipt/${sale.id}');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Sale completed successfully'),
+                backgroundColor: AppConfig.successColor,
+              ),
+            );
+            // Navigate to receipt screen
+            context.go('/pos/receipt/${sale.id}');
+          }
+        } catch (e) {
+          // Online but failed - queue for later
+          await _queueSaleOffline(cart, paymentProofUrl);
+        }
+      } else {
+        // Offline - queue the sale
+        await _queueSaleOffline(cart, paymentProofUrl);
       }
     } catch (e) {
       if (mounted) {
@@ -125,6 +144,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _isProcessing = false;
         });
       }
+    }
+  }
+
+  Future<void> _queueSaleOffline(CartProvider cart, String? paymentProofUrl) async {
+    // Convert cart items to JSON format for offline storage
+    final itemsJson = cart.items.map((item) => item.toJson()).toList();
+
+    // Queue the sale in the local database
+    await _syncService.queueSale(
+      totalAmount: cart.totalAmount,
+      paymentMethod: _selectedPaymentMethod,
+      items: itemsJson,
+      paymentProofUrl: paymentProofUrl,
+    );
+
+    // Clear the cart
+    cart.clearCart();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _syncService.isOnline
+                ? 'Sale queued for sync'
+                : 'Sale saved offline - will sync when online',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      // Navigate back to POS
+      context.go('/pos');
     }
   }
 

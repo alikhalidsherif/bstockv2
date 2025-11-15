@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/app_config.dart';
+import '../../widgets/connectivity_indicator.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -35,12 +36,19 @@ class HomeScreen extends StatelessWidget {
               ),
             ],
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          body: Column(
+            children: [
+              // Connectivity indicator
+              const ConnectivityIndicator(),
+
+              // Main content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
                   'Welcome back!',
                   style: TextStyle(
                     fontSize: 24,
@@ -89,6 +97,7 @@ class HomeScreen extends StatelessWidget {
                         icon: Icons.analytics_outlined,
                         title: 'Analytics',
                         color: Color(0xFFFF9500),
+                        route: '/analytics',
                       ),
                       _buildFeatureCard(
                         context,
@@ -96,11 +105,12 @@ class HomeScreen extends StatelessWidget {
                         title: 'Settings',
                         color: AppConfig.subtextColor,
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
