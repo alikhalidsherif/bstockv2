@@ -1,0 +1,71 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+      - claude/review-specs-multiproject-plan-01LHvz5h6ugNLQjWspwp3MR4
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: self-hosted # Runs on your home server
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Create .env.production from secrets
+        run: |
+          cat > .env.production << EOF
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          PORT=8080
+          GIN_MODE=release
+          ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+          EOF
+
+      - name: 🐳 Deploy with Docker Compose
+        run: |
+          docker-compose -f docker-compose.production.yml down
+          docker-compose -f docker-compose.production.yml build --no-cache
+          docker-compose -f docker-compose.production.yml up -d
+
+      - name: ⏳ Wait for services to be healthy
+        run: |
+          echo "Waiting for backend to be healthy..."
+          for i in {1..30}; do
+            if docker exec bstock_backend wget --quiet --tries=1 --spider http://localhost:8080/health 2>/dev/null; then
+              echo "✅ Backend is healthy!"
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          echo "❌ Backend health check failed"
+          exit 1
+
+      - name: 🧹 Clean up old Docker images
+        run: docker image prune -af
+
+      - name: 📊 Show deployment status
+        run: |
+          echo "=== Deployment Status ==="
+          docker-compose -f docker-compose.production.yml ps
+          echo ""
+          echo "=== Recent Backend Logs ==="
+          docker logs --tail 20 bstock_backend
+
+      - name: 🔔 Notify on success
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "API: https://api.ashreef.com"
+
+      - name: 🔔 Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check logs: docker logs bstock_backend"
