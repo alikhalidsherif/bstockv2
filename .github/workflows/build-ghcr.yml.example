@@ -1,0 +1,150 @@
+# CI/CD Setup Guide for Bstock
+
+## Overview
+
+Your CI/CD pipeline is configured to:
+- ✅ **Auto-deploy** when you push to main branch
+- ✅ **Run tests** on pull requests
+- ✅ **Build on your home server** (no external dependencies)
+- ✅ **Zero-downtime** deployments
+
+---
+
+## 🏠 Option 1: Self-Hosted Runner (RECOMMENDED for Home Server)
+
+### Why Self-Hosted?
+- Builds directly on your server
+- No need for Docker registry
+- Faster deployments
+- No rate limits
+- Works with your existing Portainer setup
+
+### Setup Steps
+
+#### 1. Install GitHub Actions Runner on Your Server
+
+SSH into your server:
+
+```bash
+# Create a directory for the runner
+mkdir -p ~/actions-runner && cd ~/actions-runner
+
+# Download the latest runner package
+curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+
+# Extract
+tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
+
+# Configure the runner
+./config.sh --url https://github.com/alikhalidsherif/bstockv2 --token <YOUR_TOKEN>
+```
+
+**Get your token:**
+1. Go to: https://github.com/alikhalidsherif/bstockv2/settings/actions/runners/new
+2. Copy the token from step 2
+3. Use it in the command above
+
+**When prompted:**
+- Runner group: `Default`
+- Runner name: `bstock-server` (or any name)
+- Work folder: `_work` (default)
+
+#### 2. Install Runner as a Service
+
+```bash
+# Install service
+sudo ./svc.sh install
+
+# Start service
+sudo ./svc.sh start
+
+# Check status
+sudo ./svc.sh status
+```
+
+#### 3. Add GitHub Secrets
+
+Go to: https://github.com/alikhalidsherif/bstockv2/settings/secrets/actions
+
+Add these secrets:
+- `POSTGRES_USER` = `bstock_admin`
+- `POSTGRES_PASSWORD` = (your strong password)
+- `POSTGRES_DB` = `bstock_production`
+- `JWT_SECRET` = (your generated secret)
+- `ALLOWED_ORIGINS` = `https://bstock.ashreef.com`
+
+#### 4. Test the Deployment
+
+```bash
+# Make a change and push
+git add .
+git commit -m "Test CI/CD deployment"
+git push origin claude/review-specs-multiproject-plan-01LHvz5h6ugNLQjWspwp3MR4
+```
+
+Watch the deployment in GitHub Actions:
+https://github.com/alikhalidsherif/bstockv2/actions
+
+---
+
+## ☁️ Option 2: GitHub Container Registry (Alternative)
+
+If you prefer not to run a self-hosted runner:
+
+<function_calls>
+<invoke name="Write">
+<parameter name="content">name: Build and Push to GHCR
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: 🔔 Deployment successful
+        run: |
+          echo "✅ Image pushed to GHCR"
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo ""
+          echo "Update your server with:"
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
