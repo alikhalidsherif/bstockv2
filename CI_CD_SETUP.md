@@ -17,7 +17,8 @@ Your CI/CD pipeline is configured to:
 - No need for Docker registry
 - Faster deployments (no image push/pull)
 - No rate limits
-- Works with your existing Portainer setup
+- Works with your existing Portainer + Nginx Proxy Manager setup
+- Containers connect to your existing `proxy` network
 - Free (no GitHub minutes used)
 
 ### Setup Steps
@@ -87,7 +88,22 @@ Click **New repository secret** and add each of these:
 | `JWT_SECRET` | Your JWT secret (48+ chars) | Generate with: `openssl rand -base64 48` |
 | `ALLOWED_ORIGINS` | Frontend URLs | `https://bstock.ashreef.com` |
 
-#### Step 5: Test Your CI/CD Pipeline
+#### Step 5: Configure Nginx Proxy Manager
+
+The deployment creates containers with specific names that must match your Nginx Proxy Manager configuration:
+
+**Backend Container:** `bstock-backend`
+- In Nginx Proxy Manager, create a Proxy Host for `api.ashreef.com`
+- Set Forward Hostname/IP to: `bstock-backend`
+- Set Forward Port to: `8080`
+- Enable SSL with Let's Encrypt
+- The container connects to your existing `proxy` network automatically
+
+**Database Container:** `bstock-postgres`
+- Internal use only (not exposed via Nginx Proxy Manager)
+- Accessible to backend via hostname `bstock-postgres:5432`
+
+#### Step 6: Test Your CI/CD Pipeline
 
 ```bash
 # On your development machine
@@ -102,7 +118,7 @@ git commit -m "Test: CI/CD deployment pipeline"
 git push origin claude/review-specs-multiproject-plan-01LHvz5h6ugNLQjWspwp3MR4
 ```
 
-#### Step 6: Watch the Deployment
+#### Step 7: Watch the Deployment
 
 1. Go to: https://github.com/alikhalidsherif/bstockv2/actions
 2. Click on the running workflow
@@ -110,13 +126,17 @@ git push origin claude/review-specs-multiproject-plan-01LHvz5h6ugNLQjWspwp3MR4
 4. Check your server at: `https://api.ashreef.com/health`
 
 **The deployment will:**
-1. Pull your code
-2. Stop old containers
-3. Build new Docker images
-4. Start new containers
-5. Wait for health checks
-6. Clean up old images
-7. Show deployment status
+1. Checkout latest code from your branch
+2. Create .env file from GitHub Secrets
+3. Setup PostgreSQL container (bstock-postgres) if needed
+4. Build backend Docker image tagged with commit SHA
+5. Stop and remove old backend container
+6. Start new backend container (bstock-backend) on proxy network
+7. Wait for health checks (30 second timeout)
+8. Clean up .env file and old images
+9. Show deployment status and logs
+
+**Important:** Container name `bstock-backend` MUST match your Nginx Proxy Manager Forward Hostname/IP configuration.
 
 ---
 
@@ -212,9 +232,11 @@ https://github.com/alikhalidsherif/bstockv2/actions
 # View runner logs
 sudo journalctl -u actions.runner.* -f
 
-# View deployment logs
-cd ~/actions-runner/_work/bstockv2/bstockv2
-docker-compose -f docker-compose.production.yml logs -f
+# View backend container logs
+docker logs -f bstock-backend
+
+# View PostgreSQL container logs
+docker logs -f bstock-postgres
 ```
 
 ### Check Deployment Status
@@ -227,7 +249,7 @@ docker ps | grep bstock
 curl https://api.ashreef.com/health
 
 # View recent backend logs
-docker logs --tail 50 bstock_backend
+docker logs --tail 50 bstock-backend
 ```
 
 ---
@@ -343,15 +365,26 @@ Already handled! The backend automatically runs migrations on startup.
 ### Rollback Deployment
 
 ```bash
-# On your server
-cd /opt/docker/bstockv2
+# Find the previous image
+docker images | grep bstock-backend-image
 
-# Checkout previous commit
+# Stop current container
+docker stop bstock-backend
+docker rm bstock-backend
+
+# Run previous image version
+docker run -d \
+  --name bstock-backend \
+  --restart unless-stopped \
+  --network proxy \
+  --env-file /path/to/.env \
+  -v /path/to/uploads:/app/uploads \
+  bstock-backend-image:<previous-commit-sha>
+
+# Or trigger a re-deployment of a previous commit
+# Push the previous commit to trigger CI/CD
 git log --oneline -5  # See recent commits
-git checkout <previous-commit-hash>
-
-# Rebuild and deploy
-docker-compose -f docker-compose.production.yml up -d --build
+git push origin <previous-commit-hash>:claude/review-specs-multiproject-plan-01LHvz5h6ugNLQjWspwp3MR4 --force
 ```
 
 ---
@@ -399,9 +432,11 @@ sudo journalctl -u actions.runner.* -f
 # Restart runner
 sudo systemctl restart actions.runner.*
 
-# Manual deployment (bypasses CI/CD)
-cd /opt/docker/bstockv2
-./scripts/deploy.sh
+# Manual deployment (view container status)
+docker ps | grep bstock
+
+# Restart a container manually
+docker restart bstock-backend
 
 # Force Watchtower check
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
