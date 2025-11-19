@@ -1,4 +1,15 @@
-name: Deploy to Production
+# ===============================================================
+# == Bstock Deployment to ashreef.com Homelab Server          ==
+# ===============================================================
+#
+# This workflow deploys the Bstock POS system to your homelab server
+# Components:
+# - bstock-postgres: PostgreSQL database
+# - bstock-backend: Go API server (proxied via Nginx Proxy Manager)
+#
+# ===============================================================
+
+name: Deploy to Homelab Server
 
 on:
   push:
@@ -9,63 +20,130 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted # Runs on your home server
+    runs-on: self-hosted
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      # Step 1: Checkout code
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      - name: 🔐 Create .env.production from secrets
+      # Step 2: Create .env file from GitHub Secrets
+      - name: Create .env file
         run: |
-          cat > .env.production << EOF
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          PORT=8080
-          GIN_MODE=release
-          ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
-          EOF
+          echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
+          echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
+          echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+          echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
+          echo "DB_HOST=bstock-postgres" >> .env
+          echo "DB_PORT=5432" >> .env
+          echo "PORT=8080" >> .env
+          echo "GIN_MODE=release" >> .env
 
-      - name: 🐳 Deploy with Docker Compose
+      # Step 3: Ensure PostgreSQL is running (create if doesn't exist)
+      - name: Setup PostgreSQL Database
         run: |
-          docker-compose -f docker-compose.production.yml down
-          docker-compose -f docker-compose.production.yml build --no-cache
-          docker-compose -f docker-compose.production.yml up -d
+          # Check if postgres container exists and is running
+          if [ ! $(docker ps -q -f name=bstock-postgres) ]; then
+            # Check if it exists but is stopped
+            if [ $(docker ps -aq -f name=bstock-postgres) ]; then
+              echo "Starting existing postgres container..."
+              docker start bstock-postgres
+            else
+              echo "Creating new postgres container..."
+              docker run -d \
+                --name bstock-postgres \
+                --restart unless-stopped \
+                --network proxy \
+                -e POSTGRES_USER=${{ secrets.POSTGRES_USER }} \
+                -e POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+                -e POSTGRES_DB=${{ secrets.POSTGRES_DB }} \
+                -v bstock_postgres_data:/var/lib/postgresql/data \
+                postgres:15-alpine
 
-      - name: ⏳ Wait for services to be healthy
+              # Wait for postgres to be ready
+              echo "Waiting for postgres to be ready..."
+              sleep 10
+            fi
+          else
+            echo "PostgreSQL already running"
+          fi
+
+      # Step 4: Build the new Docker image for backend
+      - name: Build Docker Image
+        working-directory: ./backend
+        run: docker build -t bstock-backend-image:${{ github.sha }} .
+
+      # Step 5: Stop and remove old backend container
+      - name: Stop and Remove Old Container
+        run: |
+          if [ $(docker ps -q -f name=bstock-backend) ]; then
+            docker stop bstock-backend
+            docker rm bstock-backend
+          fi
+
+      # Step 6: Run the new backend container
+      - name: Run New Container
+        run: |
+          docker run -d \
+            --name bstock-backend \
+            --restart unless-stopped \
+            --network proxy \
+            --env-file ./.env \
+            -v $(pwd)/uploads:/app/uploads \
+            bstock-backend-image:${{ github.sha }}
+
+      # Step 7: Wait for backend to be healthy
+      - name: Health Check
         run: |
           echo "Waiting for backend to be healthy..."
           for i in {1..30}; do
-            if docker exec bstock_backend wget --quiet --tries=1 --spider http://localhost:8080/health 2>/dev/null; then
+            if docker exec bstock-backend wget --quiet --tries=1 --spider http://localhost:8080/health 2>/dev/null; then
               echo "✅ Backend is healthy!"
-              exit 0
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "❌ Backend health check failed"
+              docker logs --tail 50 bstock-backend
+              exit 1
             fi
             echo "Waiting... ($i/30)"
             sleep 2
           done
-          echo "❌ Backend health check failed"
-          exit 1
 
-      - name: 🧹 Clean up old Docker images
-        run: docker image prune -af
+      # Step 8: Remove .env file
+      - name: Remove .env file
+        if: always()
+        run: rm -f .env
 
-      - name: 📊 Show deployment status
+      # Step 9: Clean up old images
+      - name: Prune Old Images
+        run: docker image prune -a -f
+
+      # Step 10: Show deployment status
+      - name: Deployment Status
         run: |
-          echo "=== Deployment Status ==="
-          docker-compose -f docker-compose.production.yml ps
+          echo "=== Deployment Complete ==="
+          echo "PostgreSQL: $(docker ps -f name=bstock-postgres --format '{{.Status}}')"
+          echo "Backend: $(docker ps -f name=bstock-backend --format '{{.Status}}')"
           echo ""
-          echo "=== Recent Backend Logs ==="
-          docker logs --tail 20 bstock_backend
+          echo "API Health Check:"
+          docker exec bstock-backend wget -qO- http://localhost:8080/health
+          echo ""
+          echo "=== Recent Logs ==="
+          docker logs --tail 20 bstock-backend
 
-      - name: 🔔 Notify on success
+      # Step 11: Notify on success
+      - name: Success Notification
         if: success()
         run: |
           echo "✅ Deployment successful!"
-          echo "API: https://api.ashreef.com"
+          echo "🌐 API: https://api.ashreef.com"
+          echo "🏥 Health: https://api.ashreef.com/health"
 
-      - name: 🔔 Notify on failure
+      # Step 12: Notify on failure
+      - name: Failure Notification
         if: failure()
         run: |
           echo "❌ Deployment failed!"
-          echo "Check logs: docker logs bstock_backend"
+          echo "Check logs: docker logs bstock-backend"
